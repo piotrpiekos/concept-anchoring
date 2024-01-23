@@ -6,7 +6,7 @@ from PIL import Image
 import pandas as pd
 import argparse
 import os
-def generate_images(model_name, prompts_path, save_path, device='cuda:0', guidance_scale = 7.5, image_size=512, ddim_steps=100, num_samples=10, from_case=0):
+def generate_images(model_name, models_path, prompts_path, save_path, device='cuda:0', guidance_scale = 7.5, image_size=512, ddim_steps=100, num_samples=10, from_case=0):
     '''
     Function to generate images from diffusers code
     
@@ -59,7 +59,7 @@ def generate_images(model_name, prompts_path, save_path, device='cuda:0', guidan
     unet = UNet2DConditionModel.from_pretrained(dir_, subfolder="unet")
     if 'SD' not in model_name:
         try:
-            model_path = f'models/{model_name}/{model_name.replace("compvis","diffusers")}.pt'
+            model_path = f'{models_path}/{model_name}/{model_name.replace("compvis","diffusers")}.pt'
             unet.load_state_dict(torch.load(model_path))
         except Exception as e:
             print(f'Model path is not valid, please check the file name and structure: {e}')
@@ -152,6 +152,7 @@ if __name__=='__main__':
                     prog = 'generateImages',
                     description = 'Generate Images using Diffusers Code')
     parser.add_argument('--model_name', help='name of model', type=str, required=True)
+    parser.add_argument('--models_path', help='path to the models directory', type=str, default='models')
     parser.add_argument('--prompts_path', help='path to csv file with prompts', type=str, required=True)
     parser.add_argument('--save_path', help='folder where to save images', type=str, required=True)
     parser.add_argument('--device', help='cuda device to run on', type=str, required=False, default='cuda:0')
@@ -163,6 +164,7 @@ if __name__=='__main__':
     args = parser.parse_args()
     
     model_name = args.model_name
+    models_path = args.models_path
     prompts_path = args.prompts_path
     save_path = args.save_path
     device = args.device
@@ -172,5 +174,5 @@ if __name__=='__main__':
     num_samples= args.num_samples
     from_case = args.from_case
     
-    generate_images(model_name, prompts_path, save_path, device=device,
+    generate_images(model_name, models_path, prompts_path, save_path, device=device,
                     guidance_scale = guidance_scale, image_size=image_size, ddim_steps=ddim_steps, num_samples=num_samples,from_case=from_case)
