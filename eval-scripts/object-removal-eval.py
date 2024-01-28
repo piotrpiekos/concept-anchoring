@@ -5,7 +5,9 @@ import pandas as pd
 import os
 
 import torchvision
-from torchvision.models import resnet50, ResNet50_Weights
+#from torchvision.models import resnet50, ResNet50_Weights
+#from eval_scripts.generate_images import generate_images
+from torchvision.models import resnet50
 import torch
 import json
 
@@ -27,24 +29,25 @@ classes_codes = {
 
 PROMPTS_PATH = 'data/unique-object-removal-prompts.csv'
 SAVE_DIR = 'images/generations'
-NUM_SAMPLES = 500
+NUM_SAMPLES = 5
 NUM_CLASSES = len(list(classes_codes.values()))
 OUTPUT_DIR = 'results/'
 
 
-def get_predictions():
+def get_predictions(model_name):
     images = []
     correct_preds = []
     for cls_id in range(NUM_CLASSES):
         for sample_num in range(NUM_SAMPLES):
-            fname = f'f{cls_id}_{sample_num}'
-            im = torchvision.io.read_image(os.path.join(SAVE_DIR, fname))
+            fname = f'{cls_id}_{sample_num}.png'
+            im = torchvision.io.read_image(os.path.join(SAVE_DIR, model_name, fname))
             images.append(im)
             correct_preds.append(cls_id)
     images = torch.stack(images)
     correct_preds = torch.tensor(correct_preds)
 
-    model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1).eval()
+    #model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1).eval()
+    model = resnet50(pretrained=True).eval()
 
     preds = model(images)
 
@@ -56,12 +59,14 @@ def get_predictions():
 
 
 def evaluate_object_removal(model_name, models_path, removed_class_name):
+    print('GENERATING IMAGES')
     generate_images(model_name, models_path, PROMPTS_PATH, SAVE_DIR, num_samples=NUM_SAMPLES)
-    preds, correct_preds = get_predictions()
+    print('GETTING PREDICTIONS')
+    preds, correct_preds = get_predictions(model_name)
     is_pred_correct = preds == correct_preds
 
     df = pd.read_csv(PROMPTS_PATH)
-    removed_object_id = df[df['class'] == removed_class_name]['case_number'] // NUM_CLASSES
+    removed_object_id = df[df['class'] == removed_class_name]['case_number']
 
     img_id_low, img_id_high = NUM_SAMPLES * removed_object_id, (NUM_SAMPLES + 1) * removed_object_id
 
