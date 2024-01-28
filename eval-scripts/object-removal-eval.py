@@ -29,7 +29,8 @@ classes_codes = {
 
 PROMPTS_PATH = 'data/unique-object-removal-prompts.csv'
 SAVE_DIR = 'images/generations'
-NUM_SAMPLES = 5
+NUM_SAMPLES = 500
+BATCH_SIZE = 5
 NUM_CLASSES = len(list(classes_codes.values()))
 OUTPUT_DIR = 'results/'
 
@@ -91,6 +92,7 @@ def main():
     models_path = args.models_path
     removed_class_name = args.removed_class_name
 
+    accuracies = [evaluate_object_removal]
     acc_on_removed, acc_on_other = evaluate_object_removal(model_name, models_path, removed_class_name)
     filepath = os.path.join(OUTPUT_DIR, f'{removed_class_name}.json')
     results = {

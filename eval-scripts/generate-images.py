@@ -6,6 +6,8 @@ from PIL import Image
 import pandas as pd
 import argparse
 import os
+
+from collections import defaultdict
 def generate_images(model_name, models_path, prompts_path, save_path, device='cuda:0', guidance_scale = 7.5, image_size=512, ddim_steps=100, num_samples=10, from_case=0):
     '''
     Function to generate images from diffusers code
@@ -73,6 +75,8 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
 
     folder_path = f'{save_path}/{model_name}'
     os.makedirs(folder_path, exist_ok=True)
+
+    case_imageid = defaultdict(int)
 
     for _, row in df.iterrows():
         prompt = [str(row.prompt)]*num_samples
@@ -144,8 +148,11 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
         image = image.detach().cpu().permute(0, 2, 3, 1).numpy()
         images = (image * 255).round().astype("uint8")
         pil_images = [Image.fromarray(image) for image in images]
-        for num, im in enumerate(pil_images):
-            im.save(f"{folder_path}/{case_number}_{num}.png")
+
+        for im in pil_images:
+            im_num = case_imageid[case_number]
+            im.save(f"{folder_path}/{case_number}_{im_num}.png")
+            case_imageid[case_number] += 1
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(
