@@ -14,23 +14,20 @@ import json
 generate_images_module = importlib.import_module("eval-scripts.generate-images")
 generate_images = generate_images_module.generate_images
 
-classes_codes = {
-    'cassette player': 482,
-    'chain saw': 491,
-    'church': 497,
-    'gas pump': 571,
-    'tench': 0,
-    'garbage truck': 569,
-    'English springer': 217,
-    'golf ball': 574,
-    'parachute': 701,
-    'French horn': 566
-}
+
+classes_names = [
+    'cassette player', 'chain saw', 'church', 'gas pump', 'tench', 'garbage truck', 'English springer',
+    'golf ball', 'parachute', 'French horn'
+]
+classes_ids = [
+    482, 491, 497, 571, 0, 569, 217, 574, 701, 566
+]
+
+classes_codes = dict(zip(classes_names, classes_ids))
 
 PROMPTS_PATH = 'data/unique-object-removal-prompts.csv'
 SAVE_DIR = 'images/generations'
-NUM_SAMPLES = 500
-BATCH_SIZE = 5
+NUM_SAMPLES = 1
 NUM_CLASSES = len(list(classes_codes.values()))
 OUTPUT_DIR = 'results/'
 
@@ -50,11 +47,14 @@ def get_predictions(model_name):
     #model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1).eval()
     model = resnet50(pretrained=True).eval()
 
-    preds = model(images)
+    with torch.no_grad():
+        preds = model(images.float()) # [num_images, num_class]
 
-    all_classes = torch.tensor(list(classes_codes.values()))
-
-    preds = all_classes[preds[:, all_classes].argmax()]
+    all_classes = torch.tensor(classes_ids)
+    print('images shape: ', images.shape)
+    print('preds shape: ', preds.shape)
+    print('preds argmax shape: ', preds.argmax(dim=1).shape)
+    preds = all_classes[preds.argmax(dim=1)]
 
     return preds, correct_preds
 
@@ -92,7 +92,6 @@ def main():
     models_path = args.models_path
     removed_class_name = args.removed_class_name
 
-    accuracies = [evaluate_object_removal]
     acc_on_removed, acc_on_other = evaluate_object_removal(model_name, models_path, removed_class_name)
     filepath = os.path.join(OUTPUT_DIR, f'{removed_class_name}.json')
     results = {
