@@ -53,10 +53,9 @@ def get_predictions(model_name):
     all_classes = torch.tensor(classes_ids)
     print('images shape: ', images.shape)
     print('preds shape: ', preds.shape)
-    print('preds argmax shape: ', preds.argmax(dim=1).shape)
     local_ids = preds[:, all_classes].argmax(dim=1)
     print('local_ids: ', local_ids)
-    preds = classes_ids[local_ids]
+    preds = all_classes[local_ids]
 
     return preds, correct_preds
 
