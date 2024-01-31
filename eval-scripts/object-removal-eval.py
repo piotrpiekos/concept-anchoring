@@ -68,9 +68,13 @@ def evaluate_object_removal(model_name, models_path, removed_class_name):
     is_pred_correct = preds == correct_preds
 
     df = pd.read_csv(PROMPTS_PATH)
-    removed_object_id = df[df['class'] == removed_class_name]['case_number']
+    removed_object_ids = {row['class']: row['case_number'] for _, row in df.iterrows()}
+    removed_object_id = removed_object_ids[removed_class_name]
 
-    img_id_low, img_id_high = NUM_SAMPLES * removed_object_id, (NUM_SAMPLES + 1) * removed_object_id
+    print('removed class name: ', removed_class_name)
+    print('removed object_id: ', removed_object_id)
+
+    img_id_low, img_id_high = NUM_SAMPLES * removed_object_id, NUM_SAMPLES * (removed_object_id+1)
 
     acc_on_removed = is_pred_correct[img_id_low: img_id_high].mean()
     acc_on_other = (is_pred_correct[:img_id_low].sum() + is_pred_correct[img_id_high:].sum()) / NUM_SAMPLES * (
