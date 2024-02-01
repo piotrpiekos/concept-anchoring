@@ -48,16 +48,14 @@ def get_predictions(model_name):
     model = resnet50(pretrained=True).eval()
 
     with torch.no_grad():
-        preds = model(images.float()) # [num_images, num_class]
+        preds = model(images.float()/255) # [num_images, num_class]
 
     all_classes = torch.tensor(classes_ids)
     print('images shape: ', images.shape)
     print('preds shape: ', preds.shape)
     local_ids = preds[:, all_classes].argmax(dim=1)
-    print('local_ids: ', local_ids)
-    preds = all_classes[local_ids]
 
-    return preds, correct_preds
+    return local_ids, correct_preds
 
 
 def evaluate_object_removal(model_name, models_path, removed_class_name):
@@ -74,11 +72,14 @@ def evaluate_object_removal(model_name, models_path, removed_class_name):
     print('removed class name: ', removed_class_name)
     print('removed object_id: ', removed_object_id)
 
-    img_id_low, img_id_high = NUM_SAMPLES * removed_object_id, NUM_SAMPLES * (removed_object_id+1)
+    print('df.shape', df.shape)
+    print('is_pred_correct', is_pred_correct.shape)
+    df['pred'] = preds
+    df['pred_right'] = is_pred_correct
+    print(df.head())
 
-    acc_on_removed = is_pred_correct[img_id_low: img_id_high].mean()
-    acc_on_other = (is_pred_correct[:img_id_low].sum() + is_pred_correct[img_id_high:].sum()) / NUM_SAMPLES * (
-            NUM_CLASSES - 1)
+    acc_on_removed = df[df['class'] == removed_class_name]['pred_right'].mean()
+    acc_on_other = df[df['class'] != removed_class_name]['pred_right'].mean()
 
     return acc_on_removed, acc_on_other
 
