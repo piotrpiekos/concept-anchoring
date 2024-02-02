@@ -7,6 +7,12 @@ import pandas as pd
 import argparse
 import os
 
+DEFAULT_GUIDANCE_SCALE = 0.7
+DEFAULT_IMAGE_SIZE = 512
+DEFAULT_DDIM_STEPS = 100
+
+BATCH_SIZE = 25
+
 from collections import defaultdict
 def generate_images(model_name, models_path, prompts_path, save_path, device='cuda:0', guidance_scale = 7.5, image_size=512, ddim_steps=100, num_samples=10, from_case=0):
     '''
@@ -153,6 +159,86 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
             im_num = case_imageid[case_number]
             im.save(f"{folder_path}/{case_number}_{im_num}.png")
             case_imageid[case_number] += 1
+
+def generate_image(vae, tokenizer, text_encoder, unet, torch_device,
+                   prompt, num_samples, evaluation_seed):
+    """
+    Returns a tensor of images (doesnt save it to a file)
+    """
+    assert num_samples % BATCH_SIZE == 0
+
+    scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear",
+                                     num_train_timesteps=1000)
+    prompt = [str(prompt)] * num_samples
+    seed = evaluation_seed
+
+    height = DEFAULT_IMAGE_SIZE  # default height of Stable Diffusion
+    width = DEFAULT_IMAGE_SIZE  # default width of Stable Diffusion
+
+    num_inference_steps = DEFAULT_DDIM_STEPS  # Number of denoising steps
+    guidance_scale = DEFAULT_GUIDANCE_SCALE
+
+    generator = torch.manual_seed(seed)  # Seed generator to create the inital latent noise
+
+    batch_size = len(prompt)
+
+    text_input = tokenizer(prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True,
+                           return_tensors="pt")
+
+    text_embeddings = text_encoder(text_input.input_ids.to(torch_device))[0]
+
+    max_length = text_input.input_ids.shape[-1]
+    images_list = []
+    for batch_num in num_samples // BATCH_SIZE:
+        uncond_input = tokenizer(
+            [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
+        )
+        uncond_embeddings = text_encoder(uncond_input.input_ids.to(torch_device))[0]
+
+        text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+
+        latents = torch.randn(
+            (batch_size, unet.in_channels, height // 8, width // 8),
+            generator=generator,
+        )
+        latents = latents.to(torch_device)
+
+        scheduler.set_timesteps(num_inference_steps)
+
+        latents = latents * scheduler.init_noise_sigma
+
+        from tqdm.auto import tqdm
+
+        scheduler.set_timesteps(num_inference_steps)
+
+        for t in tqdm(scheduler.timesteps):
+            # expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.
+            latent_model_input = torch.cat([latents] * 2)
+
+            latent_model_input = scheduler.scale_model_input(latent_model_input, timestep=t)
+
+            # predict the noise residual
+            with torch.no_grad():
+                noise_pred = unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+
+            # perform guidance
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+            # compute the previous noisy sample x_t -> x_t-1
+            latents = scheduler.step(noise_pred, t, latents).prev_sample
+
+        # scale and decode the image latents with vae
+        latents = 1 / 0.18215 * latents
+        with torch.no_grad():
+            image = vae.decode(latents).sample
+
+        image = (image / 2 + 0.5).clamp(0, 1)
+        images = image.detach().cpu().permute(0, 2, 3, 1)
+        images_list.append(images)
+
+    return torch.cat(images_list, dim=0)
+
 
 if __name__=='__main__':
     parser = argparse.ArgumentParser(
