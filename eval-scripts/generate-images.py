@@ -190,6 +190,9 @@ def generate_image(vae, tokenizer, text_encoder, unet, torch_device,
     max_length = text_input.input_ids.shape[-1]
     images_list = []
     for batch_num in num_samples // BATCH_SIZE:
+
+        print('generating images, batch num: ', batch_num)
+
         uncond_input = tokenizer(
             [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
         )
