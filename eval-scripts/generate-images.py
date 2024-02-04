@@ -160,10 +160,55 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
             im.save(f"{folder_path}/{case_number}_{im_num}.png")
             case_imageid[case_number] += 1
 
-def generate_image(vae, tokenizer, text_encoder, unet, torch_device,
+
+def batch_generate_images(model_name, models_path, prompts_path, save_path, num_samples):
+    if model_name == 'SD-v1-4':
+        dir_ = "CompVis/stable-diffusion-v1-4"
+    elif model_name == 'SD-V2':
+        dir_ = "stabilityai/stable-diffusion-2-base"
+    elif model_name == 'SD-V2-1':
+        dir_ = "stabilityai/stable-diffusion-2-1-base"
+    else:
+        dir_ = "CompVis/stable-diffusion-v1-4"  # all the erasure models built on SDv1-4
+
+    # 1. Load the autoencoder model which will be used to decode the latents into image space.
+    vae = AutoencoderKL.from_pretrained(dir_, subfolder="vae")
+    # 2. Load the tokenizer and text encoder to tokenize and encode the text.
+    tokenizer = CLIPTokenizer.from_pretrained(dir_, subfolder="tokenizer")
+    text_encoder = CLIPTextModel.from_pretrained(dir_, subfolder="text_encoder")
+    # 3. The UNet model for generating the latents.
+    unet = UNet2DConditionModel.from_pretrained(dir_, subfolder="unet")
+    if 'SD' not in model_name:
+        try:
+            model_path = f'{models_path}/{model_name}/{model_name.replace("compvis", "diffusers")}.pt'
+            unet.load_state_dict(torch.load(model_path))
+        except Exception as e:
+            print(f'Model path is not valid, please check the file name and structure: {e}')
+
+    vae.to(device)
+    text_encoder.to(device)
+    unet.to(device)
+    torch_device = device
+    df = pd.read_csv(prompts_path)
+
+    images_dict = dict()
+    for _, row in df.iterrows():
+        prompt = row['prompt']
+        cls = row['class']
+        seed = row['evaluation_seed']
+
+        images_dict[cls] = batch_generate_prompt_images(vae, tokenizer, text_encoder, unet, torch_device,
+                                                        prompt, num_samples, seed)
+
+    return images_dict
+
+
+
+
+def batch_generate_prompt_images(vae, tokenizer, text_encoder, unet, torch_device,
                    prompt, num_samples, evaluation_seed):
     """
-    Returns a tensor of images (doesnt save it to a file)
+    Returns a tensor of images (doesnt save it to a file). Uses batched generation for speedups
     """
     assert num_samples % BATCH_SIZE == 0
 

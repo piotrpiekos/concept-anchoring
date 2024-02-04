@@ -20,7 +20,7 @@ classes_names = [
 classes_ids = torch.tensor([
     482, 491, 497, 571, 0, 569, 217, 574, 701, 566
 ])
-OUTPUT_DIR = '../results/'
+OUTPUT_DIR = 'results/'
 
 
 def evaluate_only(images_path, removed_class_name):
@@ -37,7 +37,7 @@ def evaluate_only(images_path, removed_class_name):
         with torch.no_grad():
             preds = model(images.float() / 255)
             local_pred = preds[:, classes_ids].argmax(dim=1)
-            acc = torch.mean((local_pred == im_id).float())
+            acc = float(torch.mean((local_pred == im_id).float()))
             accuracies[classes_names[im_id]] = acc
 
     accuracy_on_other = np.mean([acc for name, acc in accuracies.items() if name != removed_class_name])
