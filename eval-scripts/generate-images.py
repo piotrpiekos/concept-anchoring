@@ -11,7 +11,7 @@ DEFAULT_GUIDANCE_SCALE = 0.7
 DEFAULT_IMAGE_SIZE = 512
 DEFAULT_DDIM_STEPS = 100
 
-BATCH_SIZE = 20
+BATCH_SIZE = 10
 
 from collections import defaultdict
 def generate_images(model_name, models_path, prompts_path, save_path, device='cuda:0', guidance_scale = 7.5, image_size=512, ddim_steps=100, num_samples=10, from_case=0):
@@ -110,6 +110,7 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
         uncond_input = tokenizer(
             [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
         )
+        print('i am in the loop')
         uncond_embeddings = text_encoder(uncond_input.input_ids.to(torch_device))[0]
 
         text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
