@@ -11,7 +11,7 @@ DEFAULT_GUIDANCE_SCALE = 0.7
 DEFAULT_IMAGE_SIZE = 512
 DEFAULT_DDIM_STEPS = 100
 
-BATCH_SIZE = 25
+BATCH_SIZE = 20
 
 from collections import defaultdict
 def generate_images(model_name, models_path, prompts_path, save_path, device='cuda:0', guidance_scale = 7.5, image_size=512, ddim_steps=100, num_samples=10, from_case=0):
@@ -161,7 +161,7 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
             case_imageid[case_number] += 1
 
 
-def batch_generate_images(model_name, models_path, prompts_path, save_path, num_samples):
+def batch_generate_images(model_name, models_path, prompts_path, num_samples,  device='cuda:0'):
     if model_name == 'SD-v1-4':
         dir_ = "CompVis/stable-diffusion-v1-4"
     elif model_name == 'SD-V2':
