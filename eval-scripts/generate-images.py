@@ -11,7 +11,11 @@ DEFAULT_GUIDANCE_SCALE = 0.7
 DEFAULT_IMAGE_SIZE = 512
 DEFAULT_DDIM_STEPS = 100
 
-BATCH_SIZE = 10
+BATCH_SIZE = 25
+
+import os
+
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
 from collections import defaultdict
 def generate_images(model_name, models_path, prompts_path, save_path, device='cuda:0', guidance_scale = 7.5, image_size=512, ddim_steps=100, num_samples=10, from_case=0):
@@ -226,21 +230,22 @@ def batch_generate_prompt_images(vae, tokenizer, text_encoder, unet, torch_devic
 
     generator = torch.manual_seed(seed)  # Seed generator to create the inital latent noise
 
-
     text_input = tokenizer(prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True,
                            return_tensors="pt")
 
-    text_embeddings = text_encoder(text_input.input_ids.to(torch_device))[0]
 
-    max_length = text_input.input_ids.shape[-1]
+
     images_list = []
-    for batch_num in num_samples // BATCH_SIZE:
+    for batch_num in range(num_samples // BATCH_SIZE):
 
+        text_embeddings = text_encoder(text_input.input_ids.to(torch_device))[0]
+        max_length = text_input.input_ids.shape[-1]
         print('generating images, batch num: ', batch_num)
 
         uncond_input = tokenizer(
             [""] * BATCH_SIZE, padding="max_length", max_length=max_length, return_tensors="pt"
         )
+
         uncond_embeddings = text_encoder(uncond_input.input_ids.to(torch_device))[0]
 
         text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
