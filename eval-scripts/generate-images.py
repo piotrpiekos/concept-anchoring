@@ -215,7 +215,7 @@ def batch_generate_prompt_images(vae, tokenizer, text_encoder, unet, torch_devic
 
     scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear",
                                      num_train_timesteps=1000)
-    prompt = [str(prompt)] * num_samples
+    prompt = [str(prompt)] * BATCH_SIZE
     seed = evaluation_seed
 
     height = DEFAULT_IMAGE_SIZE  # default height of Stable Diffusion
@@ -226,7 +226,6 @@ def batch_generate_prompt_images(vae, tokenizer, text_encoder, unet, torch_devic
 
     generator = torch.manual_seed(seed)  # Seed generator to create the inital latent noise
 
-    batch_size = len(prompt)
 
     text_input = tokenizer(prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True,
                            return_tensors="pt")
@@ -240,14 +239,14 @@ def batch_generate_prompt_images(vae, tokenizer, text_encoder, unet, torch_devic
         print('generating images, batch num: ', batch_num)
 
         uncond_input = tokenizer(
-            [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
+            [""] * BATCH_SIZE, padding="max_length", max_length=max_length, return_tensors="pt"
         )
         uncond_embeddings = text_encoder(uncond_input.input_ids.to(torch_device))[0]
 
         text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
         latents = torch.randn(
-            (batch_size, unet.in_channels, height // 8, width // 8),
+            (BATCH_SIZE, unet.in_channels, height // 8, width // 8),
             generator=generator,
         )
         latents = latents.to(torch_device)
