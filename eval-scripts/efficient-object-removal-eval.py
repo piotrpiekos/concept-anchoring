@@ -17,8 +17,8 @@ generate_images = generate_images_module.generate_images
 batch_generate_images = generate_images_module.batch_generate_images
 
 classes_names = [
-    'cassette player', 'chain saw', 'church', 'gas pump', 'tench', 'garbage truck', 'English springer',
-    'golf ball', 'parachute', 'French horn'
+    'cassette player', 'chain saw', 'church', 'gas pump', 'tench', 'garbage truck', 'english springer',
+    'golf ball', 'parachute', 'french horn'
 ]
 classes_ids = [
     482, 491, 497, 571, 0, 569, 217, 574, 701, 566
@@ -28,7 +28,6 @@ classes_codes = dict(zip(classes_names, classes_ids))
 
 PROMPTS_PATH = 'data/unique-object-removal-prompts.csv'
 SAVE_DIR = 'images/generations'
-NUM_SAMPLES = 500
 NUM_CLASSES = len(list(classes_codes.values()))
 OUTPUT_DIR = 'results/'
 
@@ -38,8 +37,9 @@ def acc(pred_classes: torch.tensor, true_class: int):
 
 
 def get_accuracy_per_class(model, images, true_class):
+    print('images shape: ', images.shape)
     with torch.no_grad():
-        preds = model(images.float() / 255)  # [num_images, num_class]
+        preds = model(images)  # [num_images, num_class]
 
     all_classes = torch.tensor(classes_ids)
 
@@ -55,10 +55,10 @@ def get_accuracy_per_class(model, images, true_class):
     return local_acc, absolute_acc
 
 
-def evaluate_object_removal(model_name, models_path, removed_class_name):
+def evaluate_object_removal(model_name, models_path, removed_class_name, num_samples):
     print('GENERATING IMAGES')
     model = resnet50(pretrained=True).eval()
-    images_dict = batch_generate_images(model_name, models_path, PROMPTS_PATH, NUM_SAMPLES)
+    images_dict = batch_generate_images(model_name, models_path, PROMPTS_PATH, num_samples)
     print('GETTING PREDICTIONS')
 
     local_accuracies, absolute_accuracies = dict(), dict()
@@ -69,11 +69,11 @@ def evaluate_object_removal(model_name, models_path, removed_class_name):
 
     local_removed_acc = local_accuracies.pop(removed_class_name)
     # local_accuracies has only other classes now
-    local_other_acc = np.mean(local_accuracies.values())
+    local_other_acc = np.mean(list(local_accuracies.values()))
 
     absolute_removed_acc = absolute_accuracies.pop(removed_class_name)
     # absolute_accuracies has only other classes now
-    absolute_other_acc = np.mean(absolute_accuracies.values())
+    absolute_other_acc = np.mean(list(absolute_accuracies.values()))
 
     results = {
         'local': {
@@ -95,15 +95,17 @@ def main():
         description='Generate Images using Diffusers Code')
     parser.add_argument('--model_name', help='name of model', type=str, required=True)
     parser.add_argument('--models_path', help='name of model', type=str, required=True)
+    parser.add_argument('--num_samples', help='how many images used for evaluation', type=int, required=True)
     parser.add_argument('--removed_class_name', help='name of class to remove', type=str, required=True)
 
     args = parser.parse_args()
 
     model_name = args.model_name
     models_path = args.models_path
+    num_samples = args.num_samples
     removed_class_name = args.removed_class_name
 
-    results = evaluate_object_removal(model_name, models_path, removed_class_name)
+    results = evaluate_object_removal(model_name, models_path, removed_class_name, num_samples)
     filepath = os.path.join(OUTPUT_DIR, f'{removed_class_name}.json')
     with open(filepath, 'w') as f:
         json.dump(results, f)

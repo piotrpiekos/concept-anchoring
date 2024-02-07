@@ -287,7 +287,7 @@ def batch_generate_prompt_images(vae, tokenizer, text_encoder, unet, torch_devic
             image = vae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
-        images = image.detach().cpu().permute(0, 2, 3, 1)
+        images = image.detach().cpu()
         images_list.append(images)
 
     return torch.cat(images_list, dim=0)
