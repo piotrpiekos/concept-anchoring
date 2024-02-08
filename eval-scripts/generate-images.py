@@ -61,7 +61,7 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
         dir_ = "stabilityai/stable-diffusion-2-1-base"
     else:
         dir_ = "CompVis/stable-diffusion-v1-4" # all the erasure models built on SDv1-4
-        
+
     # 1. Load the autoencoder model which will be used to decode the latents into image space.
     vae = AutoencoderKL.from_pretrained(dir_, subfolder="vae")
     # 2. Load the tokenizer and text encoder to tokenize and encode the text.
@@ -162,7 +162,10 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
 
         for im in pil_images:
             im_num = case_imageid[case_number]
-            im.save(f"{folder_path}/{case_number}_{im_num}.png")
+
+            saving_path = f"{folder_path}/{case_number}_{im_num}.png"
+            print('Saving. path: ', saving_path)
+            im.save(saving_path)
             case_imageid[case_number] += 1
 
 
@@ -230,9 +233,6 @@ def batch_generate_prompt_images(vae, tokenizer, text_encoder, unet, torch_devic
 
     generator = torch.manual_seed(seed)  # Seed generator to create the inital latent noise
 
-    text_input = tokenizer(prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True,
-                           return_tensors="pt")
-
 
 
     images_list = []
@@ -247,6 +247,8 @@ def batch_generate_prompt_images(vae, tokenizer, text_encoder, unet, torch_devic
         )
 
         uncond_embeddings = text_encoder(uncond_input.input_ids.to(torch_device))[0]
+        text_input = tokenizer(prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True,
+                               return_tensors="pt")
 
         text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
 
@@ -308,7 +310,7 @@ if __name__=='__main__':
     parser.add_argument('--num_samples', help='number of samples per prompt', type=int, required=False, default=1)
     parser.add_argument('--ddim_steps', help='ddim steps of inference used to train', type=int, required=False, default=100)
     args = parser.parse_args()
-    
+
     model_name = args.model_name
     models_path = args.models_path
     prompts_path = args.prompts_path
@@ -319,6 +321,6 @@ if __name__=='__main__':
     ddim_steps = args.ddim_steps
     num_samples= args.num_samples
     from_case = args.from_case
-    
+
     generate_images(model_name, models_path, prompts_path, save_path, device=device,
                     guidance_scale = guidance_scale, image_size=image_size, ddim_steps=ddim_steps, num_samples=num_samples,from_case=from_case)
