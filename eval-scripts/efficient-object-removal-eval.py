@@ -80,14 +80,17 @@ def evaluate_object_removal(model_name, models_path, removed_class_name, num_sam
     for true_class, images in images_dict.items():
         local_acc, absolute_acc = get_accuracy_per_class(model, images, true_class)
         local_accuracies[true_class] = local_acc
-        absolute_accuracies[true_class] = absolute_accuracies
+        absolute_accuracies[true_class] = absolute_acc
 
     local_removed_acc = local_accuracies.pop(removed_class_name)
     # local_accuracies has only other classes now
+    print('local other accuracies: ', local_accuracies)
     local_other_acc = np.mean(list(local_accuracies.values()))
 
     absolute_removed_acc = absolute_accuracies.pop(removed_class_name)
     # absolute_accuracies has only other classes now
+    print('abbsolute other accuracies: ', absolute_accuracies)
+    print('as list: ', list(absolute_accuracies.values()))
     absolute_other_acc = np.mean(list(absolute_accuracies.values()))
 
     results = {

@@ -107,6 +107,9 @@ def find_neighbour_concepts(concept: str) -> str:
         random.shuffle(concepts)
         if len(concepts) >= NUM_ANCHOR_CONCEPTS:
             return ';'.join(concepts[:NUM_ANCHOR_CONCEPTS]) # the split is done by the training function
+
+    print('failed to get a negative prompt for the concept: ', concept)
+    print('negatives gathered: ', retstr)
     raise Exception('failed to get negative prompt')
 
 def moving_average(a, n=3):
@@ -341,6 +344,7 @@ def train_esd(prompt, negative_prompt, p_unlearn, model_path,
 
 
     name = f'compvis-word_{word_print}-negative_{negative_word_print}-punlearn_{p_unlearn}-method_{train_method}-sg_{start_guidance}-ng_{negative_guidance}-iter_{iterations}-lr_{lr}'
+    print('model name: ', name)
     # TRAINING CODE
     pbar = tqdm(range(iterations))
     for i in pbar:
@@ -430,6 +434,7 @@ if __name__ == '__main__':
 
     negative_prompt = find_neighbour_concepts(prompt)
 
+    print('PROMPT: ', prompt)
     print('NEGATIVE PROMPTS: ', negative_prompt)
 
     train_esd(prompt=prompt, negative_prompt=negative_prompt, p_unlearn=p_unlearn, model_path=model_path,
