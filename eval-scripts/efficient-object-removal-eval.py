@@ -12,6 +12,8 @@ import torch
 import json
 import numpy as np
 
+from PIL import Image
+
 generate_images_module = importlib.import_module("eval-scripts.generate-images")
 generate_images = generate_images_module.generate_images
 batch_generate_images = generate_images_module.batch_generate_images
@@ -55,12 +57,25 @@ def get_accuracy_per_class(model, images, true_class):
     return local_acc, absolute_acc
 
 
-def evaluate_object_removal(model_name, models_path, removed_class_name, num_samples):
+def evaluate_object_removal(model_name, models_path, removed_class_name, num_samples, save_images):
     print('GENERATING IMAGES')
     model = resnet50(pretrained=True).eval()
     images_dict = batch_generate_images(model_name, models_path, PROMPTS_PATH, num_samples)
-    print('GETTING PREDICTIONS')
 
+
+    if save_images:
+        print('SAVING IMAGES')
+        for true_class, images in images_dict.items():
+            images = images.detach().cpu().permute(0, 3, 1, 2).numpy()
+            images = (images * 255).round().astype("uint8")
+            pil_images = [Image.fromarray(image) for image in images]
+
+            dir = os.path.join(SAVE_DIR, true_class)
+            os.makedirs(dir, exist_ok=True)
+            for i, im in enumerate(pil_images):
+                im.save(os.path.join(dir, f'{i}.png'))
+
+    print('GETTING PREDICTIONS')
     local_accuracies, absolute_accuracies = dict(), dict()
     for true_class, images in images_dict.items():
         local_acc, absolute_acc = get_accuracy_per_class(model, images, true_class)
@@ -97,6 +112,7 @@ def main():
     parser.add_argument('--models_path', help='name of model', type=str, required=True)
     parser.add_argument('--num_samples', help='how many images used for evaluation', type=int, required=True)
     parser.add_argument('--removed_class_name', help='name of class to remove', type=str, required=True)
+    parser.add_argument('--save_images', help='whether to save the images', type=int, default=0)
 
     args = parser.parse_args()
 
@@ -104,8 +120,9 @@ def main():
     models_path = args.models_path
     num_samples = args.num_samples
     removed_class_name = args.removed_class_name
+    save_images = True if args.save_images == 1 else False
 
-    results = evaluate_object_removal(model_name, models_path, removed_class_name, num_samples)
+    results = evaluate_object_removal(model_name, models_path, removed_class_name, num_samples, save_images)
     filepath = os.path.join(OUTPUT_DIR, f'{removed_class_name}.json')
     with open(filepath, 'w') as f:
         json.dump(results, f)
