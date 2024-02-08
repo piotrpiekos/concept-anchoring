@@ -18,7 +18,109 @@ import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
 from collections import defaultdict
-def generate_images(model_name, models_path, prompts_path, save_path, device='cuda:0', guidance_scale = 7.5, image_size=512, ddim_steps=100, num_samples=10, from_case=0):
+
+
+class GenerativeModel:
+    def __init__(self, model_name, models_path, guidance_scale=7.5, image_size=512, ddim_steps=100):
+        if model_name == 'SD-v1-4':
+            dir_ = "CompVis/stable-diffusion-v1-4"
+        elif model_name == 'SD-V2':
+            dir_ = "stabilityai/stable-diffusion-2-base"
+        elif model_name == 'SD-V2-1':
+            dir_ = "stabilityai/stable-diffusion-2-1-base"
+        else:
+            dir_ = "CompVis/stable-diffusion-v1-4"  # all the erasure models built on SDv1-4
+
+        # 1. Load the autoencoder model which will be used to decode the latents into image space.
+        self.vae = AutoencoderKL.from_pretrained(dir_, subfolder="vae")
+        # 2. Load the tokenizer and text encoder to tokenize and encode the text.
+        self.tokenizer = CLIPTokenizer.from_pretrained(dir_, subfolder="tokenizer")
+        self.text_encoder = CLIPTextModel.from_pretrained(dir_, subfolder="text_encoder")
+        # 3. The UNet model for generating the latents.
+        self.unet = UNet2DConditionModel.from_pretrained(dir_, subfolder="unet")
+        if 'SD' not in model_name:
+            try:
+                model_path = f'{models_path}/{model_name}/{model_name.replace("compvis", "diffusers")}.pt'
+                self.unet.load_state_dict(torch.load(model_path))
+            except Exception as e:
+                print(f'Model path is not valid, please check the file name and structure: {e}')
+        self.scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear",
+                                              num_train_timesteps=1000)
+
+        self.guidance_scale = guidance_scale
+        self.image_size = image_size
+        self.ddim_steps = ddim_steps
+
+    def to(self, device):
+
+        self.vae.to(device)
+        self.text_encoder.to(device)
+        self.unet.to(device)
+        self.device = device
+
+    def generate(self, prompt, num_samples, seed):
+        prompt = [str(prompt)] * num_samples
+
+        generator = torch.manual_seed(seed)
+
+        text_input = self.tokenizer(prompt, padding="max_length", max_length=self.tokenizer.model_max_length,
+                                    truncation=True,
+                                    return_tensors="pt")
+
+        text_embeddings = self.text_encoder(text_input.input_ids.to(self.device))[0]
+
+        max_length = text_input.input_ids.shape[-1]
+        uncond_input = self.tokenizer(
+            [""] * num_samples, padding="max_length", max_length=max_length, return_tensors="pt"
+        )
+        print('i am in the loop')
+        uncond_embeddings = self.text_encoder(uncond_input.input_ids.to(self.device))[0]
+
+        text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
+
+        latents = torch.randn(
+            (num_samples, self.unet.in_channels, self.image_size // 8, self.image_size // 8),
+            generator=generator,
+        )
+        latents = latents.to(self.device)
+
+        self.scheduler.set_timesteps(self.ddim_steps)
+
+        latents = latents * self.scheduler.init_noise_sigma
+
+        from tqdm.auto import tqdm
+
+        self.scheduler.set_timesteps(self.ddim_steps)
+
+        for t in tqdm(self.scheduler.timesteps):
+            # expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.
+            latent_model_input = torch.cat([latents] * 2)
+
+            latent_model_input = self.scheduler.scale_model_input(latent_model_input, timestep=t)
+
+            # predict the noise residual
+            with torch.no_grad():
+                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+
+            # perform guidance
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+            # compute the previous noisy sample x_t -> x_t-1
+            latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+
+        # scale and decode the image latents with vae
+        latents = 1 / 0.18215 * latents
+        with torch.no_grad():
+            image = self.vae.decode(latents).sample
+
+        image = (image / 2 + 0.5).clamp(0, 1)
+        image = image.detach().cpu()
+        return image
+
+
+def generate_images(model_name, models_path, prompts_path, save_path, device='cuda:0', guidance_scale=7.5,
+                    image_size=512, ddim_steps=100, num_samples=10, from_case=0):
     '''
     Function to generate images from diffusers code
     
@@ -52,7 +154,9 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
     -------
     None.
 
-    '''
+
+
+
     if model_name == 'SD-v1-4':
         dir_ = "CompVis/stable-diffusion-v1-4"
     elif model_name == 'SD-V2':
@@ -60,7 +164,7 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
     elif model_name == 'SD-V2-1':
         dir_ = "stabilityai/stable-diffusion-2-1-base"
     else:
-        dir_ = "CompVis/stable-diffusion-v1-4" # all the erasure models built on SDv1-4
+        dir_ = "CompVis/stable-diffusion-v1-4"  # all the erasure models built on SDv1-4
 
     # 1. Load the autoencoder model which will be used to decode the latents into image space.
     vae = AutoencoderKL.from_pretrained(dir_, subfolder="vae")
@@ -71,42 +175,51 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
     unet = UNet2DConditionModel.from_pretrained(dir_, subfolder="unet")
     if 'SD' not in model_name:
         try:
-            model_path = f'{models_path}/{model_name}/{model_name.replace("compvis","diffusers")}.pt'
+            model_path = f'{models_path}/{model_name}/{model_name.replace("compvis", "diffusers")}.pt'
             unet.load_state_dict(torch.load(model_path))
         except Exception as e:
             print(f'Model path is not valid, please check the file name and structure: {e}')
-    scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000)
+    scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear",
+                                     num_train_timesteps=1000)
 
     vae.to(device)
     text_encoder.to(device)
     unet.to(device)
     torch_device = device
+    '''
+
+    model = GenerativeModel(model_name, models_path)
+    model.to(device)
+
     df = pd.read_csv(prompts_path)
 
-    folder_path = f'{save_path}/{model_name}'
+    folder_path = f'{save_path}/new_{model_name}'
     os.makedirs(folder_path, exist_ok=True)
 
     case_imageid = defaultdict(int)
 
     for _, row in df.iterrows():
-        prompt = [str(row.prompt)]*num_samples
-        seed = row.evaluation_seed
         case_number = row.case_number
-        if case_number<from_case:
+        if case_number < from_case:
             continue
 
-        height = image_size                        # default height of Stable Diffusion
-        width = image_size                         # default width of Stable Diffusion
+        """
+        prompt = [str(row.prompt)] * num_samples
+        seed = row.evaluation_seed
 
-        num_inference_steps = ddim_steps           # Number of denoising steps
+        height = image_size  # default height of Stable Diffusion
+        width = image_size  # default width of Stable Diffusion
 
-        guidance_scale = guidance_scale            # Scale for classifier-free guidance
+        num_inference_steps = ddim_steps  # Number of denoising steps
 
-        generator = torch.manual_seed(seed)        # Seed generator to create the inital latent noise
+        guidance_scale = guidance_scale  # Scale for classifier-free guidance
+
+        generator = torch.manual_seed(seed)  # Seed generator to create the inital latent noise
 
         batch_size = len(prompt)
 
-        text_input = tokenizer(prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True, return_tensors="pt")
+        text_input = tokenizer(prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True,
+                               return_tensors="pt")
 
         text_embeddings = text_encoder(text_input.input_ids.to(torch_device))[0]
 
@@ -157,6 +270,9 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.detach().cpu().permute(0, 2, 3, 1).numpy()
+        """
+        image = model.generate(row.prompt, num_samples, row.evaluation_seed)
+        image = image.permute(0, 2, 3, 1).numpy()
         images = (image * 255).round().astype("uint8")
         pil_images = [Image.fromarray(image) for image in images]
 
@@ -169,7 +285,8 @@ def generate_images(model_name, models_path, prompts_path, save_path, device='cu
             case_imageid[case_number] += 1
 
 
-def batch_generate_images(model_name, models_path, prompts_path, num_samples,  device='cuda:0'):
+def batch_generate_images(model_name, models_path, prompts_path, num_samples, device='cuda:0'):
+    """
     if model_name == 'SD-v1-4':
         dir_ = "CompVis/stable-diffusion-v1-4"
     elif model_name == 'SD-V2':
@@ -197,6 +314,11 @@ def batch_generate_images(model_name, models_path, prompts_path, num_samples,  d
     text_encoder.to(device)
     unet.to(device)
     torch_device = device
+    """
+
+    model = GenerativeModel(model_name, models_path)
+    model.to(device)
+
     df = pd.read_csv(prompts_path)
 
     images_dict = dict()
@@ -205,100 +327,29 @@ def batch_generate_images(model_name, models_path, prompts_path, num_samples,  d
         cls = row['class']
         seed = row['evaluation_seed']
 
-        images_dict[cls] = batch_generate_prompt_images(vae, tokenizer, text_encoder, unet, torch_device,
-                                                        prompt, num_samples, seed)
+        images_dict[cls] = batch_generate_prompt_images(model, prompt, num_samples, seed)
 
     return images_dict
 
 
-
-
-def batch_generate_prompt_images(vae, tokenizer, text_encoder, unet, torch_device,
-                   prompt, num_samples, evaluation_seed):
+def batch_generate_prompt_images(model: GenerativeModel, prompt, num_samples, evaluation_seed):
     """
     Returns a tensor of images (doesnt save it to a file). Uses batched generation for speedups
     """
     assert num_samples % BATCH_SIZE == 0
 
-    scheduler = LMSDiscreteScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear",
-                                     num_train_timesteps=1000)
-    prompt = [str(prompt)] * BATCH_SIZE
-    seed = evaluation_seed
-
-    height = DEFAULT_IMAGE_SIZE  # default height of Stable Diffusion
-    width = DEFAULT_IMAGE_SIZE  # default width of Stable Diffusion
-
-    num_inference_steps = DEFAULT_DDIM_STEPS  # Number of denoising steps
-    guidance_scale = DEFAULT_GUIDANCE_SCALE
-
-    generator = torch.manual_seed(seed)  # Seed generator to create the inital latent noise
-
-
-
     images_list = []
     for batch_num in range(num_samples // BATCH_SIZE):
-
-        text_embeddings = text_encoder(text_input.input_ids.to(torch_device))[0]
-        max_length = text_input.input_ids.shape[-1]
-        print('generating images, batch num: ', batch_num)
-
-        uncond_input = tokenizer(
-            [""] * BATCH_SIZE, padding="max_length", max_length=max_length, return_tensors="pt"
-        )
-
-        uncond_embeddings = text_encoder(uncond_input.input_ids.to(torch_device))[0]
-        text_input = tokenizer(prompt, padding="max_length", max_length=tokenizer.model_max_length, truncation=True,
-                               return_tensors="pt")
-
-        text_embeddings = torch.cat([uncond_embeddings, text_embeddings])
-
-        latents = torch.randn(
-            (BATCH_SIZE, unet.in_channels, height // 8, width // 8),
-            generator=generator,
-        )
-        latents = latents.to(torch_device)
-
-        scheduler.set_timesteps(num_inference_steps)
-
-        latents = latents * scheduler.init_noise_sigma
-
-        from tqdm.auto import tqdm
-
-        scheduler.set_timesteps(num_inference_steps)
-
-        for t in tqdm(scheduler.timesteps):
-            # expand the latents if we are doing classifier-free guidance to avoid doing two forward passes.
-            latent_model_input = torch.cat([latents] * 2)
-
-            latent_model_input = scheduler.scale_model_input(latent_model_input, timestep=t)
-
-            # predict the noise residual
-            with torch.no_grad():
-                noise_pred = unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
-
-            # perform guidance
-            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-            # compute the previous noisy sample x_t -> x_t-1
-            latents = scheduler.step(noise_pred, t, latents).prev_sample
-
-        # scale and decode the image latents with vae
-        latents = 1 / 0.18215 * latents
-        with torch.no_grad():
-            image = vae.decode(latents).sample
-
-        image = (image / 2 + 0.5).clamp(0, 1)
-        images = image.detach().cpu()
+        images = model.generate(prompt, BATCH_SIZE, evaluation_seed)
         images_list.append(images)
 
     return torch.cat(images_list, dim=0)
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(
-                    prog = 'generateImages',
-                    description = 'Generate Images using Diffusers Code')
+        prog='generateImages',
+        description='Generate Images using Diffusers Code')
     parser.add_argument('--model_name', help='name of model', type=str, required=True)
     parser.add_argument('--models_path', help='path to the models directory', type=str, default='models')
     parser.add_argument('--prompts_path', help='path to csv file with prompts', type=str, required=True)
@@ -308,7 +359,8 @@ if __name__=='__main__':
     parser.add_argument('--image_size', help='image size used to train', type=int, required=False, default=512)
     parser.add_argument('--from_case', help='continue generating from case_number', type=int, required=False, default=0)
     parser.add_argument('--num_samples', help='number of samples per prompt', type=int, required=False, default=1)
-    parser.add_argument('--ddim_steps', help='ddim steps of inference used to train', type=int, required=False, default=100)
+    parser.add_argument('--ddim_steps', help='ddim steps of inference used to train', type=int, required=False,
+                        default=100)
     args = parser.parse_args()
 
     model_name = args.model_name
@@ -319,8 +371,9 @@ if __name__=='__main__':
     guidance_scale = args.guidance_scale
     image_size = args.image_size
     ddim_steps = args.ddim_steps
-    num_samples= args.num_samples
+    num_samples = args.num_samples
     from_case = args.from_case
 
     generate_images(model_name, models_path, prompts_path, save_path, device=device,
-                    guidance_scale = guidance_scale, image_size=image_size, ddim_steps=ddim_steps, num_samples=num_samples,from_case=from_case)
+                    guidance_scale=guidance_scale, image_size=image_size, ddim_steps=ddim_steps,
+                    num_samples=num_samples, from_case=from_case)

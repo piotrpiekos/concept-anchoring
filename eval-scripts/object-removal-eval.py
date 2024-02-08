@@ -27,7 +27,7 @@ classes_codes = dict(zip(classes_names, classes_ids))
 
 PROMPTS_PATH = 'data/object-removal-prompts.csv'
 SAVE_DIR = 'images/generations'
-NUM_SAMPLES = 500
+NUM_SAMPLES = 5
 NUM_CLASSES = len(list(classes_codes.values()))
 OUTPUT_DIR = 'results/'
 
