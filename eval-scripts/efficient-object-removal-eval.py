@@ -73,7 +73,7 @@ def evaluate_object_removal(model_name, models_path, removed_class_name, num_sam
         print('SAVING IMAGES')
         for true_class, images in images_dict.items():
             print('images shape before: ', images.shape)
-            images = images.detach().cpu().permute(0, 2, 3, 1).numpy()
+            images = images.permute(0, 2, 3, 1).numpy()
             images = (images * 255).round().astype("uint8")
             print('images shape after: ', images.shape)
             pil_images = [Image.fromarray(image) for image in images]

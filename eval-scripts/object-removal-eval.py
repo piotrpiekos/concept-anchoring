@@ -11,6 +11,8 @@ from torchvision.models import resnet50
 import torch
 import json
 
+import numpy as np
+
 generate_images_module = importlib.import_module("eval-scripts.generate-images")
 generate_images = generate_images_module.generate_images
 
@@ -19,70 +21,67 @@ classes_names = [
     'cassette player', 'chain saw', 'church', 'gas pump', 'tench', 'garbage truck', 'English springer',
     'golf ball', 'parachute', 'French horn'
 ]
-classes_ids = [
+classes_ids = torch.tensor([
     482, 491, 497, 571, 0, 569, 217, 574, 701, 566
-]
+])
 
 classes_codes = dict(zip(classes_names, classes_ids))
 
-PROMPTS_PATH = 'data/object-removal-prompts.csv'
+PROMPTS_PATH = 'data/batch_25-object-removal-prompts.csv'
 SAVE_DIR = 'images/generations'
-NUM_SAMPLES = 5
+BATCH_SIZE = 25
 NUM_CLASSES = len(list(classes_codes.values()))
 OUTPUT_DIR = 'results/'
 
-
-def get_predictions(model_name):
+def get_accuracy_of_class(eval_model: torch.nn.Module, gen_model_name: str, local_cls_id: int):
     images = []
-    correct_preds = []
-    for cls_id in range(NUM_CLASSES):
-        for sample_num in range(NUM_SAMPLES):
-            fname = f'{cls_id}_{sample_num}.png'
-            im = torchvision.io.read_image(os.path.join(SAVE_DIR, model_name, fname))
-            images.append(im)
-            correct_preds.append(cls_id)
-    images = torch.stack(images)
-    correct_preds = torch.tensor(correct_preds)
+    dir = os.path.join(SAVE_DIR, gen_model_name)
+    for fname in filter(lambda x: x.startswith(f'{local_cls_id}'), os.listdir(dir)):
+        im = torchvision.io.read_image(os.path.join(SAVE_DIR, gen_model_name, fname))
+        images.append(im)
+    images = torch.stack(images).float()/255
+    with torch.no_grad():
+        pred_probs = eval_model(images)
 
-    #model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1).eval()
+    local_pred = pred_probs[:, classes_ids].argmax(dim=1)
+    absolute_pred = pred_probs.argmax(dim=1)
+
+    absolute_cls_id = classes_ids[local_cls_id]
+
+    absolute_acc = absolute_pred == absolute_cls_id
+    local_acc = local_pred == local_cls_id
+    return absolute_acc, local_acc
+
+
+
+
+def accuracies(model_name: str, removed_class_name: str):
+    removed_class_local_id = classes_names.index(removed_class_name)
     model = resnet50(pretrained=True).eval()
 
-    with torch.no_grad():
-        preds = model(images.float()/255) # [num_images, num_class]
+    absolute_accuracy_removed, local_accuracy_removed = get_accuracy_of_class(model, model_name, removed_class_local_id)
 
-    all_classes = torch.tensor(classes_ids)
-    print('images shape: ', images.shape)
-    print('preds shape: ', preds.shape)
-    local_ids = preds[:, all_classes].argmax(dim=1)
+    absolute_accuracies, local_accuracies = [], []
+    for cls_id in filter(lambda x: x != removed_class_local_id, range(NUM_CLASSES)):
+        absolute_accuracy, local_accuracy = get_accuracy_of_class(model, model_name, cls_id)
 
-    return local_ids, correct_preds
+        absolute_accuracies.append(absolute_accuracy)
+        local_accuracies.append(local_accuracy)
 
+    absolute_accuracy_other, local_accuracy_other = np.mean(absolute_accuracies), np.mean(local_accuracies)
 
-def evaluate_object_removal(model_name, models_path, removed_class_name):
-    print('GENERATING IMAGES')
-    generate_images(model_name, models_path, PROMPTS_PATH, SAVE_DIR, num_samples=NUM_SAMPLES)
-    print('GETTING PREDICTIONS')
-    preds, correct_preds = get_predictions(model_name)
-    is_pred_correct = preds == correct_preds
+    result = {
+        'local': {
+            'acc_removed': local_accuracy_removed,
+            'acc_other': local_accuracy_other
+        },
+        'absolute': {
+            'acc_removed': absolute_accuracy_removed,
+            'acc_other': absolute_accuracy_other
+        }
+    }
 
-    df = pd.read_csv(PROMPTS_PATH)
-    removed_object_ids = {row['class']: row['case_number'] for _, row in df.iterrows()}
-    removed_object_id = removed_object_ids[removed_class_name]
-
-    print('removed class name: ', removed_class_name)
-    print('removed object_id: ', removed_object_id)
-
-    print('df.shape', df.shape)
-    print('is_pred_correct', is_pred_correct.shape)
-    df['pred'] = preds
-    df['pred_right'] = is_pred_correct
-    print(df.head())
-
-    acc_on_removed = df[df['class'] == removed_class_name]['pred_right'].mean()
-    acc_on_other = df[df['class'] != removed_class_name]['pred_right'].mean()
-
-    return acc_on_removed, acc_on_other
-
+    return result
 
 def main():
     parser = argparse.ArgumentParser(
@@ -98,12 +97,13 @@ def main():
     models_path = args.models_path
     removed_class_name = args.removed_class_name
 
-    acc_on_removed, acc_on_other = evaluate_object_removal(model_name, models_path, removed_class_name)
+    if os.path.exists(SAVE_DIR):
+        os.remove(SAVE_DIR)
+
+    generate_images(model_name, models_path, PROMPTS_PATH, SAVE_DIR, num_samples=BATCH_SIZE)
+    results = accuracies(model_name, removed_class_name)
+
     filepath = os.path.join(OUTPUT_DIR, f'{removed_class_name}.json')
-    results = {
-        'acc_removed': acc_on_removed,
-        'acc_other': acc_on_other
-    }
     with open(filepath, 'w') as f:
         json.dump(results, f)
 
