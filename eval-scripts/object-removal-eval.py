@@ -12,6 +12,7 @@ import torch
 import json
 
 import numpy as np
+import shutil
 
 generate_images_module = importlib.import_module("eval-scripts.generate-images")
 generate_images = generate_images_module.generate_images
@@ -97,8 +98,9 @@ def main():
     models_path = args.models_path
     removed_class_name = args.removed_class_name
 
-    if os.path.exists(SAVE_DIR):
-        os.remove(SAVE_DIR)
+    model_save_dir = os.path.join(SAVE_DIR, model_name)
+    if os.path.exists(model_save_dir):
+        shutil.rmtree(model_save_dir)
 
     generate_images(model_name, models_path, PROMPTS_PATH, SAVE_DIR, num_samples=BATCH_SIZE)
     results = accuracies(model_name, removed_class_name)
