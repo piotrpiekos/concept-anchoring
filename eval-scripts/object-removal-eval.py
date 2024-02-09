@@ -19,8 +19,8 @@ generate_images = generate_images_module.generate_images
 
 
 classes_names = [
-    'cassette player', 'chain saw', 'church', 'gas pump', 'tench', 'garbage truck', 'English springer',
-    'golf ball', 'parachute', 'French horn'
+    'cassette player', 'chain saw', 'church', 'gas pump', 'tench', 'garbage truck', 'english springer',
+    'golf ball', 'parachute', 'french horn'
 ]
 classes_ids = torch.tensor([
     482, 491, 497, 571, 0, 569, 217, 574, 701, 566
