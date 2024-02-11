@@ -28,29 +28,39 @@ classes_ids = torch.tensor([
 
 classes_codes = dict(zip(classes_names, classes_ids))
 
-PROMPTS_PATH = 'data/batch_25-object-removal-prompts.csv'
+PROMPTS_PATH = 'data/100_batch_25-object-removal-prompts.csv'
 SAVE_DIR = 'images/generations'
 BATCH_SIZE = 25
 NUM_CLASSES = len(list(classes_codes.values()))
 OUTPUT_DIR = 'results/'
 
 def get_accuracy_of_class(eval_model: torch.nn.Module, gen_model_name: str, local_cls_id: int):
-    images = []
     dir = os.path.join(SAVE_DIR, gen_model_name)
-    for fname in filter(lambda x: x.startswith(f'{local_cls_id}'), os.listdir(dir)):
+    local_pred_total, absolute_pred_total = [], []
+    images = []
+    print('i calculate accuracy')
+    for i, fname in enumerate(filter(lambda x: x.startswith(f'{local_cls_id}'), os.listdir(dir))):
         im = torchvision.io.read_image(os.path.join(SAVE_DIR, gen_model_name, fname))
         images.append(im)
-    images = torch.stack(images).float()/255
-    with torch.no_grad():
-        pred_probs = eval_model(images)
+        if (i+1)%BATCH_SIZE:
+            images = torch.stack(images).float() / 255
+            with torch.no_grad():
+                pred_probs = eval_model(images)
+                local_pred = pred_probs[:, classes_ids].argmax(dim=1)
+                absolute_pred = pred_probs.argmax(dim=1)
 
-    local_pred = pred_probs[:, classes_ids].argmax(dim=1)
-    absolute_pred = pred_probs.argmax(dim=1)
+                local_pred_total.append(local_pred)
+                absolute_pred_total.append(absolute_pred)
+            images = []
 
     absolute_cls_id = classes_ids[local_cls_id]
+    print('i have arrays now, number of batches: ', len(absolute_pred_total))
+    print('='*20)
+    absolute_pred = torch.stack(absolute_pred_total)
+    local_pred = torch.stack(local_pred_total)
 
-    absolute_acc = absolute_pred == absolute_cls_id
-    local_acc = local_pred == local_cls_id
+    absolute_acc = torch.mean((absolute_pred == absolute_cls_id).float()).item()
+    local_acc = torch.mean((local_pred == local_cls_id).float()).item()
     return absolute_acc, local_acc
 
 
