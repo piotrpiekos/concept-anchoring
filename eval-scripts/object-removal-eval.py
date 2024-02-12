@@ -42,7 +42,7 @@ def get_accuracy_of_class(eval_model: torch.nn.Module, gen_model_name: str, loca
     for i, fname in enumerate(filter(lambda x: x.startswith(f'{local_cls_id}'), os.listdir(dir))):
         im = torchvision.io.read_image(os.path.join(SAVE_DIR, gen_model_name, fname))
         images.append(im)
-        if (i+1)%BATCH_SIZE:
+        if (i+1) % BATCH_SIZE == 0:
             images = torch.stack(images).float() / 255
             with torch.no_grad():
                 pred_probs = eval_model(images)
