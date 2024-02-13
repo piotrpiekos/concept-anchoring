@@ -1,11 +1,12 @@
 #!/bin/bash
 #SBATCH --partition=batch
 #SBATCH -J erasing_concepts
-#SBATCH -o logs/eval_metrics.txt
-#SBATCH -e logs/eval_metrics.err
+#SBATCH -o eval_metrics2.txt
+#SBATCH -e eval_metrics2.err
 #SBATCH --time=23:59:59
-#SBATCH --gres=gpu:v100:2
+#SBATCH --gres=gpu:a100:2
 #SBATCH --mem=32G
+#SBATCH --account conf-iclr-2023.09.29-schmidhj
 
 eval "$(conda shell.bash hook)"
 echo "USER: ${USER}"
@@ -13,10 +14,16 @@ echo "USER: ${USER}"
 nvidia-smi
 conda activate ldm
 
-MODEL_NAME='compvis-word_chainsaw-negative_copingsaw;holesaw;keyholesaw-punlearn_0.5-method_full-sg_3-ng_1-iter_1000-lr_1e-05'
-MODELS_PATH="/ibex/project/c2231/piekosp/models"
-REMOVED_CLASS_NAME="chain saw"
+REMOVED_CLASS_NAME=$1
+STRIPED_REMOVED_CLASS_NAME="${REMOVED_CLASS_NAME// /}"
+
+MODEL_NAME=compvis-word_$STRIPED_REMOVED_CLASS_NAME
+MODELS_DIR="/ibex/project/c2231/piekosp/models"
+
+echo $REMOVED_CLASS_NAME
+echo $STRIPED_REMOVED_CLASS_NAME
+echo $MODEL_NAME
 
 export PYTHONPATH=.
 
-python eval-scripts/object-removal-eval.py --model_name $MODEL_NAME --models_path $MODELS_PATH --removed_class_name "chain saw"
+python eval-scripts/object-removal-eval.py --model_name $MODEL_NAME --models_path $MODELS_DIR --removed_class_name "$REMOVED_CLASS_NAME"
